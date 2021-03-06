@@ -14,6 +14,7 @@
  * limitations under the License.
  *
  */
+#include "Arduino.h"
 #include "MLX90640_I2C_Driver.h"
 #include "MLX90640_API.h"
 #include <math.h>
@@ -55,6 +56,7 @@ int MLX90640_GetFrameData(uint8_t slaveAddr, uint16_t *frameData)
         error = MLX90640_I2CRead(slaveAddr, 0x8000, 1, &statusRegister);
         if(error != 0)
         {
+      log_d("[MLX90640_GetFrameData]:MLX90640_I2CRead 1 0x8000 error");
             return error;
         }    
         dataReady = statusRegister & 0x0008;
@@ -65,18 +67,23 @@ int MLX90640_GetFrameData(uint8_t slaveAddr, uint16_t *frameData)
         error = MLX90640_I2CWrite(slaveAddr, 0x8000, 0x0030);
         if(error == -1)
         {
+            
+      log_d("[MLX90640_GetFrameData]:MLX90640_I2CWrite error");
             return error;
         }
             
         error = MLX90640_I2CRead(slaveAddr, 0x0400, 832, frameData); 
         if(error != 0)
         {
+      log_d("[MLX90640_GetFrameData]:MLX90640_I2CRead 0x0400 error");
             return error;
         }
                    
         error = MLX90640_I2CRead(slaveAddr, 0x8000, 1, &statusRegister);
         if(error != 0)
         {
+            
+      log_d("[MLX90640_GetFrameData]:MLX90640_I2CRead 2 0x0800 error");
             return error;
         }    
         dataReady = statusRegister & 0x0008;
@@ -85,6 +92,8 @@ int MLX90640_GetFrameData(uint8_t slaveAddr, uint16_t *frameData)
     
     if(cnt > 4)
     {
+        
+      log_d("[MLX90640_GetFrameData]:cnt > 4 error");
         return -8;
     }    
     
@@ -94,6 +103,8 @@ int MLX90640_GetFrameData(uint8_t slaveAddr, uint16_t *frameData)
     
     if(error != 0)
     {
+        
+      log_d("[MLX90640_GetFrameData]:MLX90640_I2CRead 0x800D error");
         return error;
     }
     

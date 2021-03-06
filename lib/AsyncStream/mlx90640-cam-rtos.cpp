@@ -71,7 +71,7 @@ uint8_t noActiveClients; // number of active clients
 SemaphoreHandle_t frameSync = NULL;
 
 // We will try to achieve 24 FPS frame rate
-const int FPS = 24;
+const int FPS = 4;
 
 // We will handle web client requests every 100 ms (10 Hz)
 const int WSINTERVAL = 100;
@@ -92,7 +92,7 @@ void mjpegCB(void *pvParameters)
   xTaskCreatePinnedToCore(
       camCB,    // callback
       "cam",    // name
-      6 * 1024, // stack size
+      10 * 1024, // stack size
       NULL,     // parameters
       2,        // priority
       &tCam,    // RTOS task handle
@@ -126,8 +126,8 @@ int getFrame(float *result)
   Serial.print("In GetFrame");
   uint16_t mlx90640Frame[834];
   for (byte x = 0; x < 2; x++) //Read both subpages
-  {  
-  Serial.print("GetFrameData");
+  {
+    Serial.print("GetFrameData");
     int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
     if (status < 0)
     {
@@ -143,7 +143,7 @@ int getFrame(float *result)
     float emissivity = 0.95;
 
     Serial.print("Calculate");
-    
+
     MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emissivity, tr, mlx90640To);
   }
 
@@ -162,7 +162,7 @@ void camCB(void *pvParameters)
   TickType_t xLastWakeTime;
 
   //  A running interval associated with currently desired frame rate
-  const TickType_t xFrequency = pdMS_TO_TICKS(1000 / FPS);
+  const TickType_t xFrequency = 5000 / portTICK_PERIOD_MS;
 
   //  Pointer to the frames
   uint16_t *fbs[834];
@@ -170,17 +170,17 @@ void camCB(void *pvParameters)
 
   //=== loop() section  ===================
   xLastWakeTime = xTaskGetTickCount();
-
   for (;;)
   {
     float mlx90640Frame[768];
+
     if (getFrame(mlx90640Frame) < 0)
     {
-      continue; // skip broken frames
+      Serial.println("Invalid frame!!!");
     }
-
-    //  Copy current frame into local buffer
-    memcpy(fbs, mlx90640Frame, sizeof(mlx90640Frame));
+    
+      //  Copy current frame into local buffer
+      memcpy(fbs, mlx90640Frame, sizeof(mlx90640Frame));
 
     //  Let other tasks run and wait until the end of the current frame rate interval (if any time left)
     taskYIELD();
@@ -200,15 +200,15 @@ void camCB(void *pvParameters)
     //  If streaming task has suspended itself (no active clients to stream to)
     //  there is no need to grab frames from the camera. We can save some juice
     //  by suspedning the tasks
-    if (noActiveClients == 0)
-    {
-      Serial.printf("mjpegCB: free heap           : %d\n", ESP.getFreeHeap());
-      Serial.printf("mjpegCB: min free heap)      : %d\n", ESP.getMinFreeHeap());
-      Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
-      Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
-      Serial.flush();
-      vTaskSuspend(NULL); // passing NULL means "suspend yourself"
-    }
+    // if (noActiveClients == 0)
+    // {
+    //   Serial.printf("mjpegCB: free heap           : %d\n", ESP.getFreeHeap());
+    //   Serial.printf("mjpegCB: min free heap)      : %d\n", ESP.getMinFreeHeap());
+    //   Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
+    //   Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
+    //   Serial.flush();
+    //   vTaskSuspend(NULL); // passing NULL means "suspend yourself"
+    // }
   }
 }
 
@@ -395,7 +395,7 @@ void configureCamera(AsyncWebServer *webServer, uint16_t sda = 0, uint16_t scl =
 {
   server = webServer;
   I2C_SDA = sda;
-  I2C_SCL = scl; 
+  I2C_SCL = scl;
 
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(400000); //Increase I2C clock speed to 400kHz
@@ -412,18 +412,21 @@ void configureCamera(AsyncWebServer *webServer, uint16_t sda = 0, uint16_t scl =
     Serial.println("Parameter extraction failed");
 
   //Once params are extracted, we can release eeMLX90640 array
-//MLX90640_SetRefreshRate(MLX90640_address, 0x05);
-    //Wire.setClock(1000000L);
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x05);
+  //Wire.setClock(1000000L);
   //Set refresh rate
   //A rate of 0.5Hz takes 4Sec per reading because we have to read two frames to get complete picture
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x00); //Set rate to 0.25Hz effective - Works
+  MLX90640_SetRefreshRate(MLX90640_address, 0x00); //Set rate to 0.25Hz effective - Works
   //MLX90640_SetRefreshRate(MLX90640_address, 0x01); //Set rate to 0.5Hz effective - Works
   //MLX90640_SetRefreshRate(MLX90640_address, 0x02); //Set rate to 1Hz effective - Works
   //MLX90640_SetRefreshRate(MLX90640_address, 0x03); //Set rate to 2Hz effective - Works
-  //    MLX90640_SetRefreshRate(MLX90640_address, 0x04); //Set rate to 4Hz effective - Works
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x04); //Set rate to 4Hz effective - Works
   //MLX90640_SetRefreshRate(MLX90640_address, 0x05); //Set rate to 8Hz effective - Works at 800kHz
   //MLX90640_SetRefreshRate(MLX90640_address, 0x06); //Set rate to 16Hz effective - Works at 800kHz
   //MLX90640_SetRefreshRate(MLX90640_address, 0x07); //Set rate to 32Hz effective - fails
+
+    float mlx90640Frame[768];
+    getFrame(mlx90640Frame);
 
   // Start mainstreaming RTOS task
   xTaskCreatePinnedToCore(
