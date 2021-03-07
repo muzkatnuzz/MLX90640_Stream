@@ -46,7 +46,6 @@ uint16_t I2C_SCL = 0;
 const byte MLX90640_address = 0x33; //Default 7-bit unshifted address of the MLX90640
 #define TA_SHIFT 8                  //Default shift for MLX90640 in open air
 
-static float mlx90640To[768];
 paramsMLX90640 mlx90640;
 
 // forward declarations
@@ -55,8 +54,6 @@ char *allocateMemory(char *aPtr, size_t aSize);
 void streamCB(void *pvParameters);
 void handleJPGSstream(AsyncWebServerRequest *request);
 void handleJPG(AsyncWebServerRequest *request);
-
-//OV2640 cam;
 
 AsyncWebServer *server;
 
@@ -71,7 +68,7 @@ uint8_t noActiveClients; // number of active clients
 SemaphoreHandle_t frameSync = NULL;
 
 // We will try to achieve 24 FPS frame rate
-const int FPS = 4;
+const int FPS = 10;
 
 // We will handle web client requests every 100 ms (10 Hz)
 const int WSINTERVAL = 100;
@@ -79,6 +76,8 @@ const int WSINTERVAL = 100;
 // ======== Server Connection Handler Task ==========================
 void mjpegCB(void *pvParameters)
 {
+  Serial.printf("mjpegCB: Executing on core %d \n", xPortGetCoreID());
+  
   TickType_t xLastWakeTime;
   const TickType_t xFrequency = pdMS_TO_TICKS(WSINTERVAL);
 
@@ -90,13 +89,13 @@ void mjpegCB(void *pvParameters)
 
   //  Creating RTOS task for grabbing frames from the camera
   xTaskCreatePinnedToCore(
-      camCB,    // callback
-      "cam",    // name
+      camCB,     // callback
+      "cam",     // name
       10 * 1024, // stack size
-      NULL,     // parameters
-      2,        // priority
-      &tCam,    // RTOS task handle
-      PRO_CPU); // core
+      NULL,      // parameters
+      2,         // priority
+      &tCam,     // RTOS task handle
+      PRO_CPU);  // core
 
   //  Registering webserver handling routines
   server->on("/stream", HTTP_GET, handleJPGSstream);
@@ -121,34 +120,44 @@ void mjpegCB(void *pvParameters)
   }
 }
 
+/*
+/ Get frame data from camera
+/ Size of result should be at least 768
+/ The call will only be successful on the core on which the wire.begin call was done
+*/
 int getFrame(float *result)
 {
-  Serial.print("In GetFrame");
-  uint16_t mlx90640Frame[834];
+  log_d("getFrame: Executing on core %d \n", xPortGetCoreID());
   for (byte x = 0; x < 2; x++) //Read both subpages
   {
-    Serial.print("GetFrameData");
+    uint16_t mlx90640Frame[834];
+    log_d("GetFrameData from address: %d \n", MLX90640_address);
     int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
     if (status < 0)
     {
-      Serial.print("GetFrame Error: ");
-      Serial.println(status);
+      Serial.printf("GetFrameData Error: %d\n", status);
       return status;
     }
 
-    Serial.print("GetTA");
+    log_d("GetFrameData status: %d \n", status);
     float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640);
 
     float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
     float emissivity = 0.95;
 
-    Serial.print("Calculate");
-
-    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emissivity, tr, mlx90640To);
+    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emissivity, tr, result);
   }
 
-  result = mlx90640To;
   return 0;
+}
+
+//Returns true if the MLX90640 is detected on the I2C bus
+boolean isConnected()
+{
+  Wire.beginTransmission((uint8_t)MLX90640_address);
+  if (Wire.endTransmission() != 0)
+    return (false); //Sensor did not ACK
+  return (true);
 }
 
 // Current frame information
@@ -159,28 +168,59 @@ volatile uint16_t *camBuf; // pointer to the current frame
 // ==== RTOS task to grab frames from the camera =========================
 void camCB(void *pvParameters)
 {
+  log_d("camCB: Executing on core %d \n", xPortGetCoreID());
   TickType_t xLastWakeTime;
 
   //  A running interval associated with currently desired frame rate
-  const TickType_t xFrequency = 5000 / portTICK_PERIOD_MS;
+  const TickType_t xFrequency = 1000 / portTICK_PERIOD_MS;
 
   //  Pointer to the frames
   uint16_t *fbs[834];
   frameNumber = 0;
+  
+  // init camera on same core where frames are collected
+  Wire.begin(I2C_SDA, I2C_SCL);
+  Wire.setClock(400000); //Increase I2C clock speed to 400kHz
 
+  if (isConnected() == false)
+  {
+    Serial.println("MLX90640 not detected at default I2C address. Please check wiring. Freezing.");
+    while (1)
+      ;
+  }
+  Serial.println("MLX90640 online!");
+
+  //Get device parameters - We only have to do this once
+  int status;
+  uint16_t eeMLX90640[832];
+  status = MLX90640_DumpEE(MLX90640_address, eeMLX90640);
+  if (status != 0)
+    Serial.println("Failed to load system parameters");
+
+  status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
+  if (status != 0)
+    Serial.println("Parameter extraction failed");
+
+  //Set refresh rate
+  //A rate of 0.5Hz takes 4Sec per reading because we have to read two frames to get complete picture
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x00); //Set rate to 0.25Hz effective - Works
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x01); //Set rate to 0.5Hz effective - Works
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x02); //Set rate to 1Hz effective - Works
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x03); //Set rate to 2Hz effective - Works
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x04); //Set rate to 4Hz effective - Works
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x05); //Set rate to 8Hz effective - Works at 800kHz
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x06); //Set rate to 16Hz effective - Works at 800kHz
+  //MLX90640_SetRefreshRate(MLX90640_address, 0x07); //Set rate to 32Hz effective - fails
+    
   //=== loop() section  ===================
   xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    float mlx90640Frame[768];
+    float mlx90640To[768];
+    getFrame(mlx90640To);
 
-    if (getFrame(mlx90640Frame) < 0)
-    {
-      Serial.println("Invalid frame!!!");
-    }
-    
-      //  Copy current frame into local buffer
-      memcpy(fbs, mlx90640Frame, sizeof(mlx90640Frame));
+    //  Copy current frame into local buffer
+    memcpy(fbs, mlx90640To, sizeof(mlx90640To));
 
     //  Let other tasks run and wait until the end of the current frame rate interval (if any time left)
     taskYIELD();
@@ -189,7 +229,7 @@ void camCB(void *pvParameters)
     //  Do not allow frame copying while switching the current frame
     xSemaphoreTake(frameSync, xFrequency);
     camBuf = *fbs;
-    camSize = sizeof(mlx90640Frame);
+    camSize = sizeof(mlx90640To);
     frameNumber++;
     //  Let anyone waiting for a frame know that the frame is ready
     xSemaphoreGive(frameSync);
@@ -397,36 +437,7 @@ void configureCamera(AsyncWebServer *webServer, uint16_t sda = 0, uint16_t scl =
   I2C_SDA = sda;
   I2C_SCL = scl;
 
-  Wire.begin(I2C_SDA, I2C_SCL);
-  Wire.setClock(400000); //Increase I2C clock speed to 400kHz
-
-  //Get device parameters - We only have to do this once
-  int status;
-  uint16_t eeMLX90640[832];
-  status = MLX90640_DumpEE(MLX90640_address, eeMLX90640);
-  if (status != 0)
-    Serial.println("Failed to load system parameters");
-
-  status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
-  if (status != 0)
-    Serial.println("Parameter extraction failed");
-
-  //Once params are extracted, we can release eeMLX90640 array
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x05);
-  //Wire.setClock(1000000L);
-  //Set refresh rate
-  //A rate of 0.5Hz takes 4Sec per reading because we have to read two frames to get complete picture
-  MLX90640_SetRefreshRate(MLX90640_address, 0x00); //Set rate to 0.25Hz effective - Works
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x01); //Set rate to 0.5Hz effective - Works
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x02); //Set rate to 1Hz effective - Works
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x03); //Set rate to 2Hz effective - Works
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x04); //Set rate to 4Hz effective - Works
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x05); //Set rate to 8Hz effective - Works at 800kHz
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x06); //Set rate to 16Hz effective - Works at 800kHz
-  //MLX90640_SetRefreshRate(MLX90640_address, 0x07); //Set rate to 32Hz effective - fails
-
-    float mlx90640Frame[768];
-    getFrame(mlx90640Frame);
+  Serial.printf("configureCamera: Executing on core %d \n", xPortGetCoreID());
 
   // Start mainstreaming RTOS task
   xTaskCreatePinnedToCore(
