@@ -163,7 +163,7 @@ boolean isConnected()
 // Current frame information
 volatile uint32_t frameNumber;
 volatile size_t camSize;   // size of the current frame, byte
-volatile uint16_t *camBuf; // pointer to the current frame
+volatile uint8_t *camBuf; // pointer to the current frame
 
 // ==== RTOS task to grab frames from the camera =========================
 void camCB(void *pvParameters)
@@ -175,7 +175,7 @@ void camCB(void *pvParameters)
   const TickType_t xFrequency = (1000 / FPS) / portTICK_PERIOD_MS;
 
   //  Pointer to the frames
-  uint16_t *fbs[834];
+  uint8_t *fbs[834];
   frameNumber = 0;
   
   // init camera on same core where frames are collected
