@@ -30,6 +30,7 @@
 #include "WiFiClient.h"
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
+#include "img_converters.h"
 
 // TODO check if dependencies are needed...
 #include "esp_bt.h"
@@ -77,7 +78,7 @@ const int WSINTERVAL = 100;
 void mjpegCB(void *pvParameters)
 {
   log_d("mjpegCB: Executing on core %d", xPortGetCoreID());
-  
+
   TickType_t xLastWakeTime;
   const TickType_t xFrequency = pdMS_TO_TICKS(WSINTERVAL);
 
@@ -162,7 +163,7 @@ boolean isConnected()
 
 // Current frame information
 volatile uint32_t frameNumber;
-volatile size_t camSize;   // size of the current frame, byte
+volatile size_t camSize;  // size of the current frame, byte
 volatile uint8_t *camBuf; // pointer to the current frame
 
 // ==== RTOS task to grab frames from the camera =========================
@@ -177,7 +178,7 @@ void camCB(void *pvParameters)
   //  Pointer to the frames
   uint8_t *fbs[834];
   frameNumber = 0;
-  
+
   // init camera on same core where frames are collected
   Wire.begin(I2C_SDA, I2C_SCL);
   Wire.setClock(400000); //Increase I2C clock speed to 400kHz
@@ -211,7 +212,7 @@ void camCB(void *pvParameters)
   //MLX90640_SetRefreshRate(MLX90640_address, 0x05); //Set rate to 8Hz effective - Works at 800kHz
   //MLX90640_SetRefreshRate(MLX90640_address, 0x06); //Set rate to 16Hz effective - Works at 800kHz
   //MLX90640_SetRefreshRate(MLX90640_address, 0x07); //Set rate to 32Hz effective - fails
-    
+
   //=== loop() section  ===================
   xLastWakeTime = xTaskGetTickCount();
   for (;;)
@@ -309,7 +310,7 @@ void handleJPGSstream(AsyncWebServerRequest *request)
   //  Creating task to push the stream to all connected clients
   int rc = xTaskCreatePinnedToCore(
       streamCB,
-      "strmCB",
+      "streamCB",
       3 * 1024,
       (void *)info,
       2,
@@ -356,24 +357,41 @@ void streamCB(void *pvParameters)
     //  Only bother to send anything if there is someone watching
     if (info->client->connected())
     {
-
       if (info->frame != frameNumber)
       {
+        log_d("JPEG compression:");
+        // conversion to jpg
+        unsigned long st = millis();
+        uint8_t *jpeg;
+        size_t jpeg_length;
+
+        log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
+        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
+        if (!jpeg_converted)
+        {
+          log_e("JPEG compression failed");
+          jpeg_length = 0;
+          jpeg = NULL;
+          continue;
+        }
+        log_i("JPEG: %lums, %uB", millis() - st, jpeg_length);
+
         xSemaphoreTake(frameSync, portMAX_DELAY);
         if (info->buffer == NULL)
         {
-          info->buffer = allocateMemory(info->buffer, camSize);
-          info->len = camSize;
+          info->buffer = allocateMemory(info->buffer, jpeg_length);
+          info->len = jpeg_length;
         }
         else
         {
-          if (camSize > info->len)
+          if (jpeg_length > info->len)
           {
-            info->buffer = allocateMemory(info->buffer, camSize);
-            info->len = camSize;
+            info->buffer = allocateMemory(info->buffer, jpeg_length);
+            info->len = jpeg_length;
           }
         }
-        memcpy(info->buffer, (const void *)camBuf, info->len);
+
+        memcpy(info->buffer, (const void *)jpeg, info->len);
         xSemaphoreGive(frameSync);
         taskYIELD();
 
