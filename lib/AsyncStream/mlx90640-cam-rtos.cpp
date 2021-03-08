@@ -67,8 +67,8 @@ uint8_t noActiveClients; // number of active clients
 // frameSync semaphore is used to prevent streaming buffer as it is replaced with the next frame
 SemaphoreHandle_t frameSync = NULL;
 
-// We will try to achieve 24 FPS frame rate
-const int FPS = 10;
+// We will try to achieve 4 FPS frame rate
+const int FPS = 4;
 
 // We will handle web client requests every 100 ms (10 Hz)
 const int WSINTERVAL = 100;
@@ -172,7 +172,7 @@ void camCB(void *pvParameters)
   TickType_t xLastWakeTime;
 
   //  A running interval associated with currently desired frame rate
-  const TickType_t xFrequency = 1000 / portTICK_PERIOD_MS;
+  const TickType_t xFrequency = (1000 / FPS) / portTICK_PERIOD_MS;
 
   //  Pointer to the frames
   uint16_t *fbs[834];
