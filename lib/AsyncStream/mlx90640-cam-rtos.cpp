@@ -252,6 +252,8 @@ void camCB(void *pvParameters)
       Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
       Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
       Serial.flush();
+      free(fbs);
+      fbs, camBuf = NULL; 
       vTaskSuspend(NULL); // passing NULL means "suspend yourself"
     }
   }
