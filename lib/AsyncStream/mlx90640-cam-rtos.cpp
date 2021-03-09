@@ -220,9 +220,9 @@ void camCB(void *pvParameters)
     float mlx90640To[768];
     getFrame(mlx90640To);
     
-    log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
+    //log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     fbs = allocateMemory(fbs, 768 * sizeof(float));
-    log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
+    //log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     
     //  Copy current frame into local buffer
     memcpy(fbs, mlx90640To, sizeof(mlx90640To));
@@ -362,14 +362,14 @@ void streamCB(void *pvParameters)
     {
       if (info->frame != frameNumber)
       {
-        log_d("JPEG compression:");
+        //log_d("JPEG compression:");
         // conversion to jpg
         unsigned long st = millis();
         uint8_t *jpeg;
         size_t jpeg_length;
         
         // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
-        log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
+        //log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
         bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
         if (!jpeg_converted)
         {
@@ -378,7 +378,7 @@ void streamCB(void *pvParameters)
           jpeg = nullptr;
           continue;
         }
-        log_i("JPEG: %lums, %uB", millis() - st, jpeg_length);
+        //log_i("JPEG: %lums, %uB", millis() - st, jpeg_length);
 
         xSemaphoreTake(frameSync, portMAX_DELAY);
         if (info->buffer == NULL)
