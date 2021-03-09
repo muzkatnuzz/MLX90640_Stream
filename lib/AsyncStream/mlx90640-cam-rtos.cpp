@@ -220,9 +220,9 @@ void camCB(void *pvParameters)
     float mlx90640To[768];
     getFrame(mlx90640To);
     
-    log_d("Allocate Memory. Largest heap size: %d", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
+    log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     fbs = allocateMemory(fbs, 768 * sizeof(float));
-    log_d("Memcopy. Largest heap size: %d", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
+    log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     
     //  Copy current frame into local buffer
     memcpy(fbs, mlx90640To, sizeof(mlx90640To));
@@ -252,8 +252,6 @@ void camCB(void *pvParameters)
       Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
       Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
       Serial.flush();
-      free(fbs);
-      fbs, camBuf = NULL; 
       vTaskSuspend(NULL); // passing NULL means "suspend yourself"
     }
   }
@@ -377,7 +375,7 @@ void streamCB(void *pvParameters)
         {
           log_e("JPEG compression failed");
           jpeg_length = 0;
-          jpeg = NULL;
+          jpeg = nullptr;
           continue;
         }
         log_i("JPEG: %lums, %uB", millis() - st, jpeg_length);
@@ -400,6 +398,10 @@ void streamCB(void *pvParameters)
         memcpy(info->buffer, (const void *)jpeg, info->len);
         xSemaphoreGive(frameSync);
         taskYIELD();
+        
+        // free memory consumed by jpeg conversion
+        free(jpeg);
+        jpeg = nullptr;
 
         info->frame = frameNumber;
         info->client->write(CTNTTYPE, cntLen);
