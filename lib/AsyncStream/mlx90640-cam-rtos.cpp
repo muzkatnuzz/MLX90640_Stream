@@ -164,7 +164,7 @@ boolean isConnected()
 // Current frame information
 volatile uint32_t frameNumber;
 volatile size_t camSize;  // size of the current frame, byte
-volatile uint8_t *camBuf; // pointer to the current frame
+volatile char *camBuf; // pointer to the current frame
 
 // ==== RTOS task to grab frames from the camera =========================
 void camCB(void *pvParameters)
@@ -176,7 +176,7 @@ void camCB(void *pvParameters)
   const TickType_t xFrequency = (1000 / FPS) / portTICK_PERIOD_MS;
 
   //  Pointer to the frames
-  uint8_t *fbs[834];
+  char *fbs = NULL;
   frameNumber = 0;
 
   // init camera on same core where frames are collected
@@ -219,7 +219,11 @@ void camCB(void *pvParameters)
   {
     float mlx90640To[768];
     getFrame(mlx90640To);
-
+    
+    log_d("Allocate Memory. Heap size: %d", esp_get_free_heap_size());
+    fbs = allocateMemory(fbs, 768 * sizeof(float));
+    log_d("Memcopy. Heap size: %d", esp_get_free_heap_size());
+    
     //  Copy current frame into local buffer
     memcpy(fbs, mlx90640To, sizeof(mlx90640To));
 
@@ -229,7 +233,7 @@ void camCB(void *pvParameters)
 
     //  Do not allow frame copying while switching the current frame
     xSemaphoreTake(frameSync, xFrequency);
-    camBuf = *fbs;
+    camBuf = fbs;
     camSize = sizeof(mlx90640To);
     frameNumber++;
     //  Let anyone waiting for a frame know that the frame is ready
@@ -244,7 +248,7 @@ void camCB(void *pvParameters)
     if (noActiveClients == 0)
     {
       Serial.printf("mjpegCB: free heap           : %d\n", ESP.getFreeHeap());
-      Serial.printf("mjpegCB: min free heap)      : %d\n", ESP.getMinFreeHeap());
+      Serial.printf("mjpegCB: min free heap       : %d\n", ESP.getMinFreeHeap());
       Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
       Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
       Serial.flush();
@@ -256,7 +260,6 @@ void camCB(void *pvParameters)
 // ==== Memory allocator that takes advantage of PSRAM if present =======================
 char *allocateMemory(char *aPtr, size_t aSize)
 {
-
   //  Since current buffer is too smal, free it
   if (aPtr != NULL)
     free(aPtr);
