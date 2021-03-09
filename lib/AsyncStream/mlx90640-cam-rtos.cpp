@@ -220,9 +220,9 @@ void camCB(void *pvParameters)
     float mlx90640To[768];
     getFrame(mlx90640To);
     
-    log_d("Allocate Memory. Heap size: %d", esp_get_free_heap_size());
+    log_d("Allocate Memory. Largest heap size: %d", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     fbs = allocateMemory(fbs, 768 * sizeof(float));
-    log_d("Memcopy. Heap size: %d", esp_get_free_heap_size());
+    log_d("Memcopy. Largest heap size: %d", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     
     //  Copy current frame into local buffer
     memcpy(fbs, mlx90640To, sizeof(mlx90640To));
@@ -234,7 +234,7 @@ void camCB(void *pvParameters)
     //  Do not allow frame copying while switching the current frame
     xSemaphoreTake(frameSync, xFrequency);
     camBuf = fbs;
-    camSize = sizeof(mlx90640To);
+    camSize = sizeof(mlx90640To); // TODO: try 768 * sizeof(float)
     frameNumber++;
     //  Let anyone waiting for a frame know that the frame is ready
     xSemaphoreGive(frameSync);
@@ -369,7 +369,8 @@ void streamCB(void *pvParameters)
         unsigned long st = millis();
         uint8_t *jpeg;
         size_t jpeg_length;
-
+        
+        // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
         log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
         bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
         if (!jpeg_converted)
