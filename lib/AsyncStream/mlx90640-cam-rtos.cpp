@@ -128,11 +128,11 @@ void mjpegCB(void *pvParameters)
 */
 int getFrame(float *result)
 {
-  log_d("getFrame: Executing on core %d", xPortGetCoreID());
+  //log_d("getFrame: Executing on core %d", xPortGetCoreID());
   for (byte x = 0; x < 2; x++) //Read both subpages
   {
     uint16_t mlx90640Frame[834];
-    log_d("GetFrameData from address: %d", MLX90640_address);
+    //log_d("GetFrameData from address: %d", MLX90640_address);
     int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
     if (status < 0)
     {
@@ -140,7 +140,7 @@ int getFrame(float *result)
       return status;
     }
 
-    log_d("GetFrameData status: %d", status);
+    //log_d("GetFrameData status: %d", status);
     float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640);
 
     float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
@@ -241,15 +241,15 @@ void camCB(void *pvParameters)
     //  If streaming task has suspended itself (no active clients to stream to)
     //  there is no need to grab frames from the camera. We can save some juice
     //  by suspedning the tasks
-    // if (noActiveClients == 0)
-    // {
-    //   Serial.printf("mjpegCB: free heap           : %d\n", ESP.getFreeHeap());
-    //   Serial.printf("mjpegCB: min free heap)      : %d\n", ESP.getMinFreeHeap());
-    //   Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
-    //   Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
-    //   Serial.flush();
-    //   vTaskSuspend(NULL); // passing NULL means "suspend yourself"
-    // }
+    if (noActiveClients == 0)
+    {
+      Serial.printf("mjpegCB: free heap           : %d\n", ESP.getFreeHeap());
+      Serial.printf("mjpegCB: min free heap)      : %d\n", ESP.getMinFreeHeap());
+      Serial.printf("mjpegCB: max alloc free heap : %d\n", ESP.getMaxAllocHeap());
+      Serial.printf("mjpegCB: tCam stack wtrmark  : %d\n", uxTaskGetStackHighWaterMark(tCam));
+      Serial.flush();
+      vTaskSuspend(NULL); // passing NULL means "suspend yourself"
+    }
   }
 }
 
