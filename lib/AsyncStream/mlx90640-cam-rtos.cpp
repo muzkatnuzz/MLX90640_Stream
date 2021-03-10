@@ -498,7 +498,7 @@ void streamCB(void *pvParameters)
 
         // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
         //log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
-        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
+        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 40, &jpeg, &jpeg_length);
         if (!jpeg_converted)
         {
           log_e("JPEG compression failed");
