@@ -74,6 +74,44 @@ const int FPS = 4;
 // We will handle web client requests every 100 ms (10 Hz)
 const int WSINTERVAL = 100;
 
+// ======== Colorize temperature readings ==========================
+//low range of the sensor (this will be blue on the screen)
+const float MINTEMP = 20;
+
+//high range of the sensor (this will be red on the screen)
+const float MAXTEMP = 35;
+
+//the colors we will be using
+const uint16_t camColors[] = {0x480F,
+0x400F,0x400F,0x400F,0x4010,0x3810,0x3810,0x3810,0x3810,0x3010,0x3010,
+0x3010,0x2810,0x2810,0x2810,0x2810,0x2010,0x2010,0x2010,0x1810,0x1810,
+0x1811,0x1811,0x1011,0x1011,0x1011,0x0811,0x0811,0x0811,0x0011,0x0011,
+0x0011,0x0011,0x0011,0x0031,0x0031,0x0051,0x0072,0x0072,0x0092,0x00B2,
+0x00B2,0x00D2,0x00F2,0x00F2,0x0112,0x0132,0x0152,0x0152,0x0172,0x0192,
+0x0192,0x01B2,0x01D2,0x01F3,0x01F3,0x0213,0x0233,0x0253,0x0253,0x0273,
+0x0293,0x02B3,0x02D3,0x02D3,0x02F3,0x0313,0x0333,0x0333,0x0353,0x0373,
+0x0394,0x03B4,0x03D4,0x03D4,0x03F4,0x0414,0x0434,0x0454,0x0474,0x0474,
+0x0494,0x04B4,0x04D4,0x04F4,0x0514,0x0534,0x0534,0x0554,0x0554,0x0574,
+0x0574,0x0573,0x0573,0x0573,0x0572,0x0572,0x0572,0x0571,0x0591,0x0591,
+0x0590,0x0590,0x058F,0x058F,0x058F,0x058E,0x05AE,0x05AE,0x05AD,0x05AD,
+0x05AD,0x05AC,0x05AC,0x05AB,0x05CB,0x05CB,0x05CA,0x05CA,0x05CA,0x05C9,
+0x05C9,0x05C8,0x05E8,0x05E8,0x05E7,0x05E7,0x05E6,0x05E6,0x05E6,0x05E5,
+0x05E5,0x0604,0x0604,0x0604,0x0603,0x0603,0x0602,0x0602,0x0601,0x0621,
+0x0621,0x0620,0x0620,0x0620,0x0620,0x0E20,0x0E20,0x0E40,0x1640,0x1640,
+0x1E40,0x1E40,0x2640,0x2640,0x2E40,0x2E60,0x3660,0x3660,0x3E60,0x3E60,
+0x3E60,0x4660,0x4660,0x4E60,0x4E80,0x5680,0x5680,0x5E80,0x5E80,0x6680,
+0x6680,0x6E80,0x6EA0,0x76A0,0x76A0,0x7EA0,0x7EA0,0x86A0,0x86A0,0x8EA0,
+0x8EC0,0x96C0,0x96C0,0x9EC0,0x9EC0,0xA6C0,0xAEC0,0xAEC0,0xB6E0,0xB6E0,
+0xBEE0,0xBEE0,0xC6E0,0xC6E0,0xCEE0,0xCEE0,0xD6E0,0xD700,0xDF00,0xDEE0,
+0xDEC0,0xDEA0,0xDE80,0xDE80,0xE660,0xE640,0xE620,0xE600,0xE5E0,0xE5C0,
+0xE5A0,0xE580,0xE560,0xE540,0xE520,0xE500,0xE4E0,0xE4C0,0xE4A0,0xE480,
+0xE460,0xEC40,0xEC20,0xEC00,0xEBE0,0xEBC0,0xEBA0,0xEB80,0xEB60,0xEB40,
+0xEB20,0xEB00,0xEAE0,0xEAC0,0xEAA0,0xEA80,0xEA60,0xEA40,0xF220,0xF200,
+0xF1E0,0xF1C0,0xF1A0,0xF180,0xF160,0xF140,0xF100,0xF0E0,0xF0C0,0xF0A0,
+0xF080,0xF060,0xF040,0xF020,0xF800,};
+
+uint16_t displayPixelWidth, displayPixelHeight;
+
 // ======== Server Connection Handler Task ==========================
 void mjpegCB(void *pvParameters)
 {
@@ -161,6 +199,63 @@ boolean isConnected()
   return (true);
 }
 
+// start with some initial colors
+float minTemp = 20.0;
+float maxTemp = 40.0;
+
+byte red, green, blue;
+// variables for row/column interpolation
+float intPoint, val, a, b, c, d, ii;
+
+/***************************************************************************************
+** Function name:           color565
+** Description:             convert three 8 bit RGB levels to a 16 bit colour value
+***************************************************************************************/
+uint16_t color565(byte r, byte g, byte b)
+{
+  return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
+// source: https://github.com/netzbasteln/MLX90640-Thermocam/blob/master/TC_ESP32_MLX90640.ino
+// Get color for temp value.
+uint16_t getColor(float val) {
+  /*
+    pass in value and figure out R G B
+    several published ways to do this I basically graphed R G B and developed simple linear equations
+    again a 5-6-5 color display will not need accurate temp to R G B color calculation
+    equations based on
+    http://web-tech.ga-usa.com/2012/05/creating-a-custom-hot-to-cold-temperature-color-gradient-for-use-with-rrdtool/index.html
+  */
+
+  red = constrain(255.0 / (c - b) * val - ((b * 255.0) / (c - b)), 0, 255);
+
+  if ((val > minTemp) & (val < a)) {
+    green = constrain(255.0 / (a - minTemp) * val - (255.0 * minTemp) / (a - minTemp), 0, 255);
+  }
+  else if ((val >= a) & (val <= c)) {
+    green = 255;
+  }
+  else if (val > c) {
+    green = constrain(255.0 / (c - d) * val - (d * 255.0) / (c - d), 0, 255);
+  }
+  else if ((val > d) | (val < a)) {
+    green = 0;
+  }
+
+  if (val <= b) {
+    blue = constrain(255.0 / (a - b) * val - (255.0 * b) / (a - b), 0, 255);
+  }
+  else if ((val > b) & (val <= d)) {
+    blue = 0;
+  }
+  else if (val > d) {
+    blue = constrain(240.0 / (maxTemp - d) * val - (d * 240.0) / (maxTemp - d), 0, 240);
+  }
+
+  // use the displays color mapping function to get 5-6-5 color palet (R=5 bits, G=6 bits, B-5 bits)
+  return color565(red, green, blue);
+}
+
 // Current frame information
 volatile uint32_t frameNumber;
 volatile size_t camSize;  // size of the current frame, byte
@@ -217,9 +312,42 @@ void camCB(void *pvParameters)
   xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    float mlx90640To[768];
+    float mlx90640To[32 * 24];
     getFrame(mlx90640To);
-    
+
+    // convert to actual colors
+    for (uint8_t h = 0; h < 24; h++)
+    {
+      for (uint8_t w = 0; w < 32; w++)
+      {
+        float t = mlx90640To[h * 32 + w];
+        Serial.print(t, 1); Serial.print(", ");
+
+        t = min(t, MAXTEMP);
+        t = max(t, MINTEMP);
+
+        //mlx90640To[h * 32 + w] = getColor(mlx90640To[h * 32 + w]);
+
+        uint8_t colorIndex = map(t, MINTEMP, MAXTEMP, 0, 255);
+
+        colorIndex = constrain(colorIndex, 0, 255);
+
+        // replace measured temperature by color
+        mlx90640To[h * 32 + w] = camColors[colorIndex];
+        
+        Serial.printf("%#x", camColors[colorIndex]); Serial.print(", ");
+        
+    Serial.println();
+
+        //draw the pixels!
+        // arcada.display->fillRect(displayPixelWidth * w, displayPixelHeight * h,
+        //                          displayPixelHeight, displayPixelWidth,
+        //                          camColors[colorIndex]);
+      }
+    }
+
+    Serial.println();
+
     //log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     fbs = allocateMemory(fbs, 768 * sizeof(float));
     //log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
@@ -364,10 +492,10 @@ void streamCB(void *pvParameters)
       {
         //log_d("JPEG compression:");
         // conversion to jpg
-        unsigned long st = millis();
+        //unsigned long st = millis();
         uint8_t *jpeg;
         size_t jpeg_length;
-        
+
         // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
         //log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
         bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
@@ -398,7 +526,7 @@ void streamCB(void *pvParameters)
         memcpy(info->buffer, (const void *)jpeg, info->len);
         xSemaphoreGive(frameSync);
         taskYIELD();
-        
+
         // free memory consumed by jpeg conversion
         free(jpeg);
         jpeg = nullptr;
@@ -474,6 +602,12 @@ void configureCamera(AsyncWebServer *webServer, uint16_t sda = 0, uint16_t scl =
       2,
       &tMjpeg,
       APP_CPU);
+
+  // TODO check example from adafruit:
+  //   mlx.setMode(MLX90640_CHESS);
+  // mlx.setResolution(MLX90640_ADC_18BIT);
+  // mlx.setRefreshRate(MLX90640_8_HZ);
+  // Wire.setClock(1000000); // max 1 MHz
 }
 
 void startCamera()
