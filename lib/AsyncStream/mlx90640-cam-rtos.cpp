@@ -349,11 +349,11 @@ void camCB(void *pvParameters)
     Serial.println();
 
     //log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
-    fbs = allocateMemory(fbs, 768 * sizeof(float));
+    fbs = allocateMemory(fbs, 32 * 24 * sizeof(float));
     //log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     
     //  Copy current frame into local buffer
-    memcpy(fbs, mlx90640To, sizeof(mlx90640To));
+    memcpy(fbs, mlx90640To, 32 * 24 * sizeof(float));
 
     //  Let other tasks run and wait until the end of the current frame rate interval (if any time left)
     taskYIELD();
@@ -362,7 +362,7 @@ void camCB(void *pvParameters)
     //  Do not allow frame copying while switching the current frame
     xSemaphoreTake(frameSync, xFrequency);
     camBuf = fbs;
-    camSize = sizeof(mlx90640To); // TODO: try 768 * sizeof(float)
+    camSize = 32 * 24 * sizeof(float);
     frameNumber++;
     //  Let anyone waiting for a frame know that the frame is ready
     xSemaphoreGive(frameSync);
