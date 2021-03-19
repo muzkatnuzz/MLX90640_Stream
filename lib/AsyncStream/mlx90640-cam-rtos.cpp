@@ -218,7 +218,8 @@ uint16_t color565(byte r, byte g, byte b)
 
 // source: https://github.com/netzbasteln/MLX90640-Thermocam/blob/master/TC_ESP32_MLX90640.ino
 // Get color for temp value.
-uint16_t getColor(float val) {
+uint16_t calculateColor(float val)
+{
   /*
     pass in value and figure out R G B
     several published ways to do this I basically graphed R G B and developed simple linear equations
@@ -229,31 +230,55 @@ uint16_t getColor(float val) {
 
   red = constrain(255.0 / (c - b) * val - ((b * 255.0) / (c - b)), 0, 255);
 
-  if ((val > minTemp) & (val < a)) {
+  if ((val > minTemp) & (val < a))
+  {
     green = constrain(255.0 / (a - minTemp) * val - (255.0 * minTemp) / (a - minTemp), 0, 255);
   }
-  else if ((val >= a) & (val <= c)) {
+  else if ((val >= a) & (val <= c))
+  {
     green = 255;
   }
-  else if (val > c) {
+  else if (val > c)
+  {
     green = constrain(255.0 / (c - d) * val - (d * 255.0) / (c - d), 0, 255);
   }
-  else if ((val > d) | (val < a)) {
+  else if ((val > d) | (val < a))
+  {
     green = 0;
   }
 
-  if (val <= b) {
+  if (val <= b)
+  {
     blue = constrain(255.0 / (a - b) * val - (255.0 * b) / (a - b), 0, 255);
   }
-  else if ((val > b) & (val <= d)) {
+  else if ((val > b) & (val <= d))
+  {
     blue = 0;
   }
-  else if (val > d) {
+  else if (val > d)
+  {
     blue = constrain(240.0 / (maxTemp - d) * val - (d * 240.0) / (maxTemp - d), 0, 240);
   }
 
   // use the displays color mapping function to get 5-6-5 color palet (R=5 bits, G=6 bits, B-5 bits)
   return color565(red, green, blue);
+}
+
+// Use mapping table to map given temperature to color 
+uint16_t mapColor(float val)
+{
+  float t = val;
+
+  t = min(t, MAXTEMP);
+  t = max(t, MINTEMP);
+
+  // convert measured temperatures to color
+  uint8_t colorIndex = map(t, MINTEMP, MAXTEMP, 0, 255);
+  colorIndex = constrain(colorIndex, 0, 255);
+
+  // replace measured temperature by color
+  uint16_t color = camColors[colorIndex];
+  return color;
 }
 
 // Current frame information
@@ -315,45 +340,31 @@ void camCB(void *pvParameters)
     float mlx90640To[32 * 24];
     getFrame(mlx90640To);
 
+    uint16_t mlx90640ToColors[32 * 24];
+
     // convert to actual colors
     for (uint8_t h = 0; h < 24; h++)
     {
       for (uint8_t w = 0; w < 32; w++)
       {
-        float t = mlx90640To[h * 32 + w];
-        Serial.print(t, 1); Serial.print(", ");
-
-        t = min(t, MAXTEMP);
-        t = max(t, MINTEMP);
-
-        //mlx90640To[h * 32 + w] = getColor(mlx90640To[h * 32 + w]);
-
-        uint8_t colorIndex = map(t, MINTEMP, MAXTEMP, 0, 255);
-
-        colorIndex = constrain(colorIndex, 0, 255);
-
-        // replace measured temperature by color
-        mlx90640To[h * 32 + w] = camColors[colorIndex];
-        
-        Serial.printf("%#x", camColors[colorIndex]); Serial.print(", ");
-        
-    Serial.println();
-
-        //draw the pixels!
-        // arcada.display->fillRect(displayPixelWidth * w, displayPixelHeight * h,
-        //                          displayPixelHeight, displayPixelWidth,
-        //                          camColors[colorIndex]);
+        // choose which color conversion fits better - mapping table or calculation
+        if (true)
+        {
+          mlx90640ToColors[h * 32 + w] = mapColor(mlx90640To[h * 32 + w]);
+        }
+        else
+        {
+          mlx90640ToColors[h * 32 + w] = calculateColor(mlx90640To[h * 32 + w]);
+        }
       }
     }
 
-    Serial.println();
-
     //log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
-    fbs = allocateMemory(fbs, 32 * 24 * sizeof(float));
+    fbs = allocateMemory(fbs, 32 * 24 * sizeof(uint16_t));
     //log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
-    
+
     //  Copy current frame into local buffer
-    memcpy(fbs, mlx90640To, 32 * 24 * sizeof(float));
+    memcpy(fbs, mlx90640ToColors, 32 * 24 * sizeof(uint16_t));
 
     //  Let other tasks run and wait until the end of the current frame rate interval (if any time left)
     taskYIELD();
@@ -362,7 +373,7 @@ void camCB(void *pvParameters)
     //  Do not allow frame copying while switching the current frame
     xSemaphoreTake(frameSync, xFrequency);
     camBuf = fbs;
-    camSize = 32 * 24 * sizeof(float);
+    camSize = 32 * 24 * sizeof(uint16_t);
     frameNumber++;
     //  Let anyone waiting for a frame know that the frame is ready
     xSemaphoreGive(frameSync);
@@ -498,7 +509,7 @@ void streamCB(void *pvParameters)
 
         // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
         //log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
-        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 40, &jpeg, &jpeg_length);
+        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
         if (!jpeg_converted)
         {
           log_e("JPEG compression failed");
