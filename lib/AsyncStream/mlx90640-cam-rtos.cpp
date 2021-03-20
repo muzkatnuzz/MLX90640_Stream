@@ -31,6 +31,7 @@
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
 #include "img_converters.h"
+#include "interpolation.h"
 
 // TODO check if dependencies are needed...
 #include "esp_bt.h"
@@ -52,6 +53,7 @@ paramsMLX90640 mlx90640;
 // forward declarations
 void camCB(void *pvParameters);
 char *allocateMemory(char *aPtr, size_t aSize);
+float *allocateMemory(float *aPtr, size_t aSize);
 void streamCB(void *pvParameters);
 void handleJPGSstream(AsyncWebServerRequest *request);
 void handleJPG(AsyncWebServerRequest *request);
@@ -73,6 +75,18 @@ const int FPS = 4;
 
 // We will handle web client requests every 100 ms (10 Hz)
 const int WSINTERVAL = 100;
+
+
+// ======== Camera settings ========================================
+// camera raw rows/cols
+#define COLS 32
+#define ROWS 24
+
+// interpolation settings
+const uint8_t INTERPOLATION_FACTOR_ROWS = 1;
+const uint8_t INTERPOLATION_FACTOR_COLS = 1;
+const uint16_t INTERPOLATED_ROWS = INTERPOLATION_FACTOR_ROWS * ROWS;
+const uint16_t INTERPOLATED_COLS = INTERPOLATION_FACTOR_COLS * COLS;
 
 // ======== Colorize temperature readings ==========================
 //low range of the sensor (this will be blue on the screen)
@@ -130,7 +144,7 @@ void mjpegCB(void *pvParameters)
   xTaskCreatePinnedToCore(
       camCB,     // callback
       "cam",     // name
-      10 * 1024, // stack size
+      40 * 1024, // stack size
       NULL,      // parameters
       2,         // priority
       &tCam,     // RTOS task handle
@@ -337,34 +351,40 @@ void camCB(void *pvParameters)
   xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    float mlx90640To[32 * 24];
+    float mlx90640To[ROWS * COLS];
     getFrame(mlx90640To);
+    
+    // TODO check if allocate memory is better: fbs = allocateMemory(fbs, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
+    float *interpolated_mlx90640To = NULL; 
+    interpolated_mlx90640To = allocateMemory(interpolated_mlx90640To, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(float));
+    //float interpolated_mlx90640To[INTERPOLATED_ROWS * INTERPOLATED_COLS];
+    interpolate_image(mlx90640To, ROWS, COLS, interpolated_mlx90640To, INTERPOLATED_ROWS, INTERPOLATED_COLS);
 
-    uint16_t mlx90640ToColors[32 * 24];
+    uint16_t mlx90640ToColors[INTERPOLATED_ROWS * INTERPOLATED_COLS];
 
     // convert to actual colors
-    for (uint8_t h = 0; h < 24; h++)
+    for (uint16_t h = 0; h < INTERPOLATED_ROWS; h++)
     {
-      for (uint8_t w = 0; w < 32; w++)
+      for (uint16_t w = 0; w < INTERPOLATED_COLS; w++)
       {
         // choose which color conversion fits better - mapping table or calculation
         if (true)
         {
-          mlx90640ToColors[h * 32 + w] = mapColor(mlx90640To[h * 32 + w]);
+          mlx90640ToColors[h * INTERPOLATED_COLS + w] = mapColor(interpolated_mlx90640To[h * INTERPOLATED_COLS + w]);
         }
         else
         {
-          mlx90640ToColors[h * 32 + w] = calculateColor(mlx90640To[h * 32 + w]);
+          mlx90640ToColors[h * INTERPOLATED_COLS + w] = calculateColor(interpolated_mlx90640To[h * INTERPOLATED_COLS + w]);
         }
       }
     }
 
     //log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
-    fbs = allocateMemory(fbs, 32 * 24 * sizeof(uint16_t));
+    fbs = allocateMemory(fbs, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
     //log_d("Memcopy. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
 
     //  Copy current frame into local buffer
-    memcpy(fbs, mlx90640ToColors, 32 * 24 * sizeof(uint16_t));
+    memcpy(fbs, mlx90640ToColors, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
 
     //  Let other tasks run and wait until the end of the current frame rate interval (if any time left)
     taskYIELD();
@@ -373,7 +393,7 @@ void camCB(void *pvParameters)
     //  Do not allow frame copying while switching the current frame
     xSemaphoreTake(frameSync, xFrequency);
     camBuf = fbs;
-    camSize = 32 * 24 * sizeof(uint16_t);
+    camSize = INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t);
     frameNumber++;
     //  Let anyone waiting for a frame know that the frame is ready
     xSemaphoreGive(frameSync);
@@ -405,6 +425,26 @@ char *allocateMemory(char *aPtr, size_t aSize)
 
   char *ptr = NULL;
   ptr = (char *)ps_malloc(aSize);
+
+  // If the memory pointer is NULL, we were not able to allocate any memory, and that is a terminal condition.
+  if (ptr == NULL)
+  {
+    Serial.println("Out of memory!");
+    delay(5000);
+    ESP.restart();
+  }
+  return ptr;
+}
+
+// ==== Memory allocator that takes advantage of PSRAM if present =======================
+float *allocateMemory(float *aPtr, size_t aSize)
+{
+  //  Since current buffer is too smal, free it
+  if (aPtr != NULL)
+    free(aPtr);
+
+  float *ptr = NULL;
+  ptr = (float *)ps_malloc(aSize);
 
   // If the memory pointer is NULL, we were not able to allocate any memory, and that is a terminal condition.
   if (ptr == NULL)
@@ -509,7 +549,7 @@ void streamCB(void *pvParameters)
 
         // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
         //log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
-        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, 32, 24, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
+        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, INTERPOLATED_COLS, INTERPOLATED_ROWS, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
         if (!jpeg_converted)
         {
           log_e("JPEG compression failed");
