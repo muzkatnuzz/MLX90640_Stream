@@ -53,6 +53,7 @@ paramsMLX90640 mlx90640;
 // forward declarations
 void camCB(void *pvParameters);
 char *allocateMemory(char *aPtr, size_t aSize);
+uint16_t *allocateMemory(uint16_t *aPtr, size_t aSize);
 float *allocateMemory(float *aPtr, size_t aSize);
 void streamCB(void *pvParameters);
 void handleJPGSstream(AsyncWebServerRequest *request);
@@ -83,8 +84,8 @@ const int WSINTERVAL = 100;
 #define ROWS 24
 
 // interpolation settings
-const uint8_t INTERPOLATION_FACTOR_ROWS = 1;
-const uint8_t INTERPOLATION_FACTOR_COLS = 1;
+const uint8_t INTERPOLATION_FACTOR_ROWS = 4;
+const uint8_t INTERPOLATION_FACTOR_COLS = 4;
 const uint16_t INTERPOLATED_ROWS = INTERPOLATION_FACTOR_ROWS * ROWS;
 const uint16_t INTERPOLATED_COLS = INTERPOLATION_FACTOR_COLS * COLS;
 
@@ -144,7 +145,7 @@ void mjpegCB(void *pvParameters)
   xTaskCreatePinnedToCore(
       camCB,     // callback
       "cam",     // name
-      40 * 1024, // stack size
+      10 * 1024, // stack size
       NULL,      // parameters
       2,         // priority
       &tCam,     // RTOS task handle
@@ -351,7 +352,8 @@ void camCB(void *pvParameters)
   xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    float mlx90640To[ROWS * COLS];
+    float *mlx90640To = NULL;
+    mlx90640To = allocateMemory(mlx90640To, ROWS * COLS * sizeof(float));
     getFrame(mlx90640To);
     
     // TODO check if allocate memory is better: fbs = allocateMemory(fbs, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
@@ -360,7 +362,9 @@ void camCB(void *pvParameters)
     //float interpolated_mlx90640To[INTERPOLATED_ROWS * INTERPOLATED_COLS];
     interpolate_image(mlx90640To, ROWS, COLS, interpolated_mlx90640To, INTERPOLATED_ROWS, INTERPOLATED_COLS);
 
-    uint16_t mlx90640ToColors[INTERPOLATED_ROWS * INTERPOLATED_COLS];
+    // uint16_t mlx90640ToColors[INTERPOLATED_ROWS * INTERPOLATED_COLS];
+    uint16_t *mlx90640ToColors = NULL;
+    mlx90640ToColors = allocateMemory(mlx90640ToColors, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
 
     // convert to actual colors
     for (uint16_t h = 0; h < INTERPOLATED_ROWS; h++)
@@ -445,6 +449,27 @@ float *allocateMemory(float *aPtr, size_t aSize)
 
   float *ptr = NULL;
   ptr = (float *)ps_malloc(aSize);
+
+  // If the memory pointer is NULL, we were not able to allocate any memory, and that is a terminal condition.
+  if (ptr == NULL)
+  {
+    Serial.println("Out of memory!");
+    delay(5000);
+    ESP.restart();
+  }
+  return ptr;
+}
+
+
+// ==== Memory allocator that takes advantage of PSRAM if present =======================
+uint16_t *allocateMemory(uint16_t *aPtr, size_t aSize)
+{
+  //  Since current buffer is too smal, free it
+  if (aPtr != NULL)
+    free(aPtr);
+
+  uint16_t *ptr = NULL;
+  ptr = (uint16_t *)ps_malloc(aSize);
 
   // If the memory pointer is NULL, we were not able to allocate any memory, and that is a terminal condition.
   if (ptr == NULL)
