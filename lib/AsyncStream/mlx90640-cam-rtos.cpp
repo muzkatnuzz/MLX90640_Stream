@@ -225,6 +225,7 @@ float intPoint, val, a, b, c, d, ii;
 /***************************************************************************************
 ** Function name:           color565
 ** Description:             convert three 8 bit RGB levels to a 16 bit colour value
+** Description: http://www.barth-dev.de/online/rgb565-color-picker/
 ***************************************************************************************/
 uint16_t color565(byte r, byte g, byte b)
 {
@@ -280,6 +281,7 @@ uint16_t calculateColor(float val)
 }
 
 // Use mapping table to map given temperature to color 
+// https://github.com/adafruit/Adafruit_MLX90640/blob/master/examples/MLX90640_arcadaCam/MLX90640_arcadaCam.ino
 uint16_t mapColor(float val)
 {
   float t = val;
