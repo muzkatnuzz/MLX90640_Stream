@@ -362,7 +362,7 @@ void camCB(void *pvParameters)
     float *interpolated_mlx90640To = NULL; 
     interpolated_mlx90640To = allocateMemory(interpolated_mlx90640To, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(float));
     //float interpolated_mlx90640To[INTERPOLATED_ROWS * INTERPOLATED_COLS];
-    interpolate_image(mlx90640To, ROWS, COLS, interpolated_mlx90640To, INTERPOLATED_ROWS, INTERPOLATED_COLS);
+    interpolate_image_nearest_neighbour(mlx90640To, ROWS, COLS, interpolated_mlx90640To, INTERPOLATED_ROWS, INTERPOLATED_COLS);
 
     // uint16_t mlx90640ToColors[INTERPOLATED_ROWS * INTERPOLATED_COLS];
     uint16_t *mlx90640ToColors = NULL;

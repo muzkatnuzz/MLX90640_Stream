@@ -8,3 +8,4 @@ float cubicInterpolate(float p[], float x);
 float bicubicInterpolate(float p[], float x, float y);
 void interpolate_image(float *src, uint8_t src_rows, uint8_t src_cols,
                        float *dest, uint8_t dest_rows, uint8_t dest_cols);
+void interpolate_image_nearest_neighbour(float *src, uint16_t src_rows, uint16_t src_cols, float *dest, uint16_t dest_rows, uint16_t dest_cols);
