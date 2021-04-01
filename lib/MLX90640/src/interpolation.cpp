@@ -109,28 +109,49 @@ void interpolate_image(float *src, uint8_t src_rows, uint8_t src_cols,
   }
 }
 
+// // src is a grid src_rows * src_cols
+// // dest is a pre-allocated grid, dest_rows*dest_cols
+// void interpolate_image_nearest_neighbour(float *src, uint16_t src_rows, uint16_t src_cols, float *dest, uint16_t dest_rows, uint16_t dest_cols)
+// {
+//   uint16_t row_factor = dest_rows / src_rows;
+//   uint16_t col_factor = dest_cols / src_cols;
+
+//   for (uint16_t r = 0; r < src_rows; r++)
+//   {
+//     for (uint16_t c = 0; c < src_cols; c++)
+//     {
+//       // write all rows times dest rows to dest array
+//       for (uint16_t i = 0; i < row_factor; i++)
+//       {
+//         dest[(r * row_factor) + i] = src[r];
+//       }
+
+//       // write all columns times dest rows into dest array
+//       for (uint16_t i = 0; i < col_factor; i++)
+//       {
+//         dest[(r * col_factor) + i] = src[r];
+//       }
+//     }
+//   }
+// }
+
 // src is a grid src_rows * src_cols
 // dest is a pre-allocated grid, dest_rows*dest_cols
+// source: http://tech-algorithm.com/articles/nearest-neighbor-image-scaling
 void interpolate_image_nearest_neighbour(float *src, uint16_t src_rows, uint16_t src_cols, float *dest, uint16_t dest_rows, uint16_t dest_cols)
 {
-  uint16_t row_factor = dest_rows / src_rows;
-  uint16_t col_factor = dest_cols / src_cols;
+  // added +1 to account for an early rounding problem
+  uint16_t x_ratio = (uint16_t)((src_rows << 16) / dest_rows) + 1;
+  uint16_t y_ratio = (uint16_t)((src_cols << 16) / dest_cols) + 1;
 
-  for (uint16_t r = 0; r < src_rows; r++)
+  uint16_t x2, y2;
+  for (int col = 0; col < dest_cols; col++)
   {
-    for (uint16_t c = 0; c < src_cols; c++)
+    for (int row = 0; row < dest_rows; row++)
     {
-      // write all rows times dest rows to dest array
-      for (uint16_t i = 0; i < row_factor; i++)
-      {
-        dest[(r * row_factor) + i] = src[r];
-      }
-
-      // write all columns times dest rows into dest array
-      for (uint16_t i = 0; i < col_factor; i++)
-      {
-        dest[(r * col_factor) + i] = src[r];
-      }
+      x2 = ((row * x_ratio) >> 16);
+      y2 = ((col * y_ratio) >> 16);
+      dest[(col * dest_rows) + row] = src[(y2 * src_rows) + x2];
     }
   }
 }
