@@ -84,8 +84,8 @@ const int WSINTERVAL = 100;
 #define ROWS 24
 
 // interpolation settings
-const uint8_t INTERPOLATION_FACTOR_ROWS = 1;
-const uint8_t INTERPOLATION_FACTOR_COLS = 1;
+const uint8_t INTERPOLATION_FACTOR_ROWS = 10;
+const uint8_t INTERPOLATION_FACTOR_COLS = 10;
 const uint16_t INTERPOLATED_ROWS = INTERPOLATION_FACTOR_ROWS * ROWS;
 const uint16_t INTERPOLATED_COLS = INTERPOLATION_FACTOR_COLS * COLS;
 
@@ -571,13 +571,13 @@ void streamCB(void *pvParameters)
       {
         //log_d("JPEG compression:");
         // conversion to jpg
-        //unsigned long st = millis();
+        unsigned long st = millis();
         uint8_t *jpeg;
         size_t jpeg_length;
 
         // fmt2jpg uses malloc with jpg_buf_len = 64*1024;
         //log_d("Starting jpeg conversion:  %d", xPortGetCoreID());
-        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, INTERPOLATED_COLS, INTERPOLATED_ROWS, PIXFORMAT_RGB565, 80, &jpeg, &jpeg_length);
+        bool jpeg_converted = fmt2jpg((uint8_t *)camBuf, camSize, INTERPOLATED_COLS, INTERPOLATED_ROWS, PIXFORMAT_RGB565, 16, &jpeg, &jpeg_length);
         if (!jpeg_converted)
         {
           log_e("JPEG compression failed");
@@ -585,7 +585,7 @@ void streamCB(void *pvParameters)
           jpeg = nullptr;
           continue;
         }
-        //log_i("JPEG: %lums, %uB", millis() - st, jpeg_length);
+        log_i("JPEG: %lums, %uB", millis() - st, jpeg_length);
 
         xSemaphoreTake(frameSync, portMAX_DELAY);
         if (info->buffer == NULL)
@@ -602,7 +602,7 @@ void streamCB(void *pvParameters)
           }
         }
 
-        memcpy(info->buffer, (const void *)jpeg, info->len);
+        memcpy(info->buffer, (const void *)jpeg, jpeg_length);
         xSemaphoreGive(frameSync);
         taskYIELD();
 

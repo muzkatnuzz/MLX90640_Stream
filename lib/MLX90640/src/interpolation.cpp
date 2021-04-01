@@ -141,16 +141,18 @@ void interpolate_image(float *src, uint8_t src_rows, uint8_t src_cols,
 void interpolate_image_nearest_neighbour(float *src, uint16_t src_rows, uint16_t src_cols, float *dest, uint16_t dest_rows, uint16_t dest_cols)
 {
   // added +1 to account for an early rounding problem
-  uint16_t x_ratio = (uint16_t)((src_rows << 16) / dest_rows) + 1;
-  uint16_t y_ratio = (uint16_t)((src_cols << 16) / dest_cols) + 1;
+  uint16_t x_ratio = (uint16_t)((src_rows << 16) / dest_rows) + 1; //<<16 is equivalent to x * 65536
+  uint16_t y_ratio = (uint16_t)((src_cols << 16) / dest_cols) + 1; //<<16 is equivalent to x * 65536
+
+  log_d("interpolate_image_nearest_neighbour Scale: \t x=%u, y=%u", x_ratio, y_ratio);
 
   uint16_t x2, y2;
   for (int col = 0; col < dest_cols; col++)
   {
     for (int row = 0; row < dest_rows; row++)
     {
-      x2 = ((row * x_ratio) >> 16);
-      y2 = ((col * y_ratio) >> 16);
+      x2 = ((row * x_ratio) >> 16); //>>16 is equivalent to divide by 65536
+      y2 = ((col * y_ratio) >> 16); //>>16 is equivalent to divide by 65536
       dest[(col * dest_rows) + row] = src[(y2 * src_rows) + x2];
     }
   }
