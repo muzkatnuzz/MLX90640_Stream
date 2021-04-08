@@ -359,16 +359,16 @@ void camCB(void *pvParameters)
     getFrame(mlx90640To);
     
     //log_d("camCB interpolation begin: Allocate Memory. Largest heap size:\t %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
-    // TODO check if allocate memory is better: fbs = allocateMemory(fbs, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
     float *interpolated_mlx90640To = NULL; 
     interpolated_mlx90640To = allocateMemory(interpolated_mlx90640To, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(float));
-    //float interpolated_mlx90640To[INTERPOLATED_ROWS * INTERPOLATED_COLS];
+
     interpolate_image_nearest_neighbour(mlx90640To, ROWS, COLS, interpolated_mlx90640To, INTERPOLATED_ROWS, INTERPOLATED_COLS);
     free(mlx90640To);
-    // uint16_t mlx90640ToColors[INTERPOLATED_ROWS * INTERPOLATED_COLS];
+
     uint16_t *mlx90640ToColors = NULL;
     mlx90640ToColors = allocateMemory(mlx90640ToColors, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
     //log_d("camCB interpolation end: Allocate Memory. Largest heap size:\t %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
+    
     // convert to actual colors
     for (uint16_t h = 0; h < INTERPOLATED_ROWS; h++)
     {
@@ -385,6 +385,7 @@ void camCB(void *pvParameters)
         }
       }
     }
+    
     free(interpolated_mlx90640To);
     //log_d("Allocate Memory. Largest heap size: %zu", heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)); // as from https://github.com/espressif/esp32-camera/blob/master/conversions/to_jpg.cpp
     fbs = allocateMemory(fbs, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
@@ -393,6 +394,7 @@ void camCB(void *pvParameters)
     //  Copy current frame into local buffer
     memcpy(fbs, mlx90640ToColors, INTERPOLATED_ROWS * INTERPOLATED_COLS * sizeof(uint16_t));
     free(mlx90640ToColors);
+    
     //  Let other tasks run and wait until the end of the current frame rate interval (if any time left)
     taskYIELD();
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
