@@ -13,4 +13,4 @@ Based on repo https://github.com/arkhipenko/esp32-mjpeg-multiclient-espcam-drive
 * https://github.com/sparkfun/SparkFun_MLX90640_Arduino_Example.git
 
 ## TODO
-* investigate occassional- reset after client disconnect
+* investigate occassional reset after client disconnect
